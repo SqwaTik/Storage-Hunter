@@ -1,473 +1,325 @@
 --[[ AutoFarm v2 — Universal for Auction Tycoon ]]
-local Players = game:GetService("Players")
-local RS = game:GetService("ReplicatedStorage")
-local UIS = game:GetService("UserInputService")
-local player = Players.LocalPlayer
-local pg = player:WaitForChild("PlayerGui")
+local ok, err = pcall(function()
+    local Players = (game:FindService and game:FindService("Players")) or game:GetService("Players")
+    local RS = (game:FindService and game:FindService("ReplicatedStorage")) or game:GetService("ReplicatedStorage")
+    local UIS = (game:FindService and game:FindService("UserInputService")) or game:GetService("UserInputService")
+    local player = Players.LocalPlayer
+    if not player then task.wait(1); player = Players.LocalPlayer end
+    local pg = player:WaitForChild("PlayerGui", 10)
+    if not pg then return end
 
--- Settings
-local S = {
-    AutoBid = false, AutoCollectCoins = false, AutoBuyout = false,
-    BidAmount = 100, BidDelay = 3,
-    AutoStock = false, AutoCollectEarnings = false, StockDelay = 5,
-    AutoSellPawn = false, PawnSellDelay = 5,
-    AutoDaily = false, DailyDelay = 60,
-    AutoUpgrade = false, UpgradeDelay = 10,
-    AutoQuest = false, QuestDelay = 15,
-    AutoExpandPlot = false, AutoBuild = false, ExpandDelay = 30,
-    AutoFish = false, FishDelay = 8,
-    AutoLuckyPotion = false, PotionDelay = 300,
-    AutoVehicleIncome = false, VehicleDelay = 60,
-}
+    local S = {
+        AutoBid = false, AutoCollectCoins = false, AutoBuyout = false,
+        BidAmount = 100, BidDelay = 3,
+        AutoStock = false, AutoCollectEarnings = false, StockDelay = 5,
+        AutoSellPawn = false, PawnSellDelay = 5,
+        AutoDaily = false, DailyDelay = 60,
+        AutoUpgrade = false, UpgradeDelay = 10,
+        AutoQuest = false, QuestDelay = 15,
+        AutoExpandPlot = false, AutoBuild = false, ExpandDelay = 30,
+        AutoFish = false, FishDelay = 8,
+        AutoLuckyPotion = false, PotionDelay = 300,
+        AutoVehicleIncome = false, VehicleDelay = 60,
+    }
 
-local guiEnabled = false
-local RC = {}
-local coroutines = {}
+    local guiEnabled = false
+    local RC = {}
+    local coroutines = {}
+    local function id(...) return (...) end
 
-local function scan()
-    local events = RS:FindFirstChild("Events")
-    if not events then return end
-    for _, folder in ipairs(events:GetChildren()) do
-        for _, obj in ipairs(folder:GetChildren()) do
-            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-                RC[folder.Name .. "." .. obj.Name] = obj
-                RC[obj.Name] = obj
-            end
-            for _, sub in ipairs(obj:GetChildren()) do
-                if sub:IsA("RemoteEvent") or sub:IsA("RemoteFunction") then
-                    RC[folder.Name .. "." .. obj.Name .. "." .. sub.Name] = sub
-                    RC[obj.Name .. "." .. sub.Name] = sub
-                    RC[sub.Name] = sub
+    local function scan()
+        local events = RS:FindFirstChild("Events")
+        if not events then return end
+        for _, folder in ipairs(events:GetChildren()) do
+            for _, obj in ipairs(folder:GetChildren()) do
+                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                    RC[folder.Name .. "." .. obj.Name] = obj
+                    RC[obj.Name] = obj
+                end
+                for _, sub in ipairs(obj:GetChildren()) do
+                    if sub:IsA("RemoteEvent") or sub:IsA("RemoteFunction") then
+                        RC[folder.Name .. "." .. obj.Name .. "." .. sub.Name] = sub
+                        RC[obj.Name .. "." .. sub.Name] = sub
+                        RC[sub.Name] = sub
+                    end
                 end
             end
         end
+        local n = 0; for _ in pairs(RC) do n = n + 1 end
+        print("[Farm] Found " .. n .. " remotes")
     end
-    local n = 0; for _ in pairs(RC) do n = n + 1 end
-    print("[Farm] Found " .. n .. " remotes")
-end
 
-local function fire(name, ...)
-    local ev = RC[name]
-    if not ev then return end
-    local ok, err = pcall(function()
-        if ev:IsA("RemoteEvent") then ev:FireServer(...)
-        else return ev:InvokeServer(...) end
-    end)
-    return ok, err
-end
-
-local function has(name)
-    return RC[name] ~= nil
-end
-
--- GUI Builder
-local gui = Instance.new("ScreenGui")
-gui.Name = "AutoFarmGUI"
-gui.ResetOnSpawn = false
-gui.Enabled = false
-gui.Parent = pg
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 600, 0, 400)
-main.Position = UDim2.new(0.5, -300, 0.5, -200)
-main.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-main.BackgroundTransparency = 0.1
-main.BorderSizePixel = 0
-main.Parent = gui
-do
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, 12)
-    c.Parent = main
-end
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 36)
-title.Position = UDim2.new(0, 0, 0, 0)
-title.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
-title.BackgroundTransparency = 0.3
-title.BorderSizePixel = 0
-title.Text = "AutoFarm v2"
-title.TextColor3 = Color3.fromRGB(220, 220, 255)
-title.TextSize = 18
-title.Font = Enum.Font.GothamBold
-title.Parent = main
-do
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, 12)
-    c.Parent = title
-    local s = Instance.new("UIStroke")
-    s.Color = Color3.fromRGB(60, 60, 100)
-    s.Thickness = 1
-    s.Parent = title
-end
-
-local tabFrame = Instance.new("Frame")
-tabFrame.Size = UDim2.new(1, 0, 0, 36)
-tabFrame.Position = UDim2.new(0, 0, 0, 36)
-tabFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-tabFrame.BorderSizePixel = 0
-tabFrame.Parent = main
-
-local tabs = {"Auction", "Shop", "Pawn", "Plot", "Other"}
-local tabButtons = {}
-local tabPanels = {}
-
-local function makeTab(name, idx)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 120, 1, 0)
-    btn.Position = UDim2.new(0, (idx-1)*120, 0, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
-    btn.BackgroundTransparency = 0.3
-    btn.BorderSizePixel = 0
-    btn.Text = name
-    btn.TextColor3 = Color3.fromRGB(180, 180, 200)
-    btn.TextSize = 14
-    btn.Font = Enum.Font.Gotham
-    btn.Parent = tabFrame
-    
-    local panel = Instance.new("ScrollingFrame")
-    panel.Size = UDim2.new(1, -10, 0, 300)
-    panel.Position = UDim2.new(0, 5, 0, 78)
-    panel.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-    panel.BackgroundTransparency = 1
-    panel.BorderSizePixel = 0
-    panel.ScrollBarThickness = 4
-    panel.CanvasSize = UDim2.new(0, 0, 0, 0)
-    panel.Visible = (idx == 1)
-    panel.Parent = main
-    
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 4)
-    layout.FillDirection = Enum.FillDirection.Vertical
-    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Parent = panel
-    
-    btn.MouseButton1Click:Connect(function()
-        for i, b in ipairs(tabButtons) do
-            b.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
-            tabPanels[i].Visible = false
+    local function fire(name, ...)
+        local r = RC[name]
+        if not r then return false end
+        if r:IsA("RemoteEvent") then
+            pcall(r.FireServer, r, ...)
+            return true
+        elseif r:IsA("RemoteFunction") then
+            pcall(r.InvokeServer, r, ...)
+            return true
         end
-        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
-        panel.Visible = true
-    end)
-    
-    table.insert(tabButtons, btn)
-    table.insert(tabPanels, panel)
-    return panel
-end
+        return false
+    end
 
-local function makeToggle(parent, name, key)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1, -10, 0, 40)
-    f.BackgroundColor3 = Color3.fromRGB(30, 30, 46)
-    f.BackgroundTransparency = 0.2
-    f.BorderSizePixel = 0
-    f.Parent = parent
-    do
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, 8)
-        c.Parent = f
-    end
-    
-    local lb = Instance.new("TextLabel")
-    lb.Size = UDim2.new(0.7, 0, 1, 0)
-    lb.Position = UDim2.new(0, 10, 0, 0)
-    lb.BackgroundTransparency = 1
-    lb.Text = name
-    lb.TextColor3 = Color3.fromRGB(200, 200, 220)
-    lb.TextSize = 14
-    lb.Font = Enum.Font.Gotham
-    lb.TextXAlignment = Enum.TextXAlignment.Left
-    lb.Parent = f
-    
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 80, 0, 30)
-    btn.Position = UDim2.new(1, -90, 0.5, -15)
-    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-    btn.BorderSizePixel = 0
-    btn.Text = "OFF"
-    btn.TextColor3 = Color3.fromRGB(200, 80, 80)
-    btn.TextSize = 13
-    btn.Font = Enum.Font.GothamBold
-    btn.Parent = f
-    do
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, 8)
-        c.Parent = btn
-    end
-    
-    btn.MouseButton1Click:Connect(function()
-        S[key] = not S[key]
-        if S[key] then
-            btn.BackgroundColor3 = Color3.fromRGB(50, 180, 80)
-            btn.Text = "ON"
-            btn.TextColor3 = Color3.fromRGB(220, 255, 220)
-        else
-            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-            btn.Text = "OFF"
-            btn.TextColor3 = Color3.fromRGB(200, 80, 80)
+    -- GUI
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AutoFarmGUI"
+    gui.ResetOnSpawn = false
+    gui.Parent = pg
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 350, 0, 500)
+    frame.Position = UDim2.new(0.5, -175, 0.5, -250)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    frame.BackgroundTransparency = 0.15
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
+    gui.Enabled = false
+
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 12)
+    UICorner.Parent = frame
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 35)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "AutoFarm v2"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 18
+    title.TextScaled = true
+    title.Parent = frame
+
+    -- Tabs
+    local tabFrame = Instance.new("Frame")
+    tabFrame.Size = UDim2.new(1, 0, 0, 35)
+    tabFrame.Position = UDim2.new(0, 0, 0, 35)
+    tabFrame.BackgroundTransparency = 1
+    tabFrame.Parent = frame
+
+    local tabs = {"Auction", "Shop", "Pawn", "Plot", "Other"}
+    local currentTab = nil
+    local scrollFrame
+    local tabButtons = {}
+    local function switchTab(name)
+        if scrollFrame then scrollFrame:Destroy() end
+        scrollFrame = Instance.new("ScrollingFrame")
+        scrollFrame.Size = UDim2.new(1, -10, 1, -85)
+        scrollFrame.Position = UDim2.new(0, 5, 0, 75)
+        scrollFrame.BackgroundTransparency = 1
+        scrollFrame.BorderSizePixel = 0
+        scrollFrame.ScrollBarThickness = 4
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        scrollFrame.Parent = frame
+        currentTab = name
+
+        local items = {}
+        if name == "Auction" then
+            items = {{"AutoBid", "Auto Bid"}, {"BidAmount", "Bid Amount"}, {"BidDelay", "Bid Delay (s)"}, {"AutoCollectCoins", "Collect Coins"}, {"AutoBuyout", "Auto Buyout"}}
+        elseif name == "Shop" then
+            items = {{"AutoStock", "Auto Stock"}, {"StockDelay", "Stock Delay (s)"}, {"AutoCollectEarnings", "Collect Earnings"}}
+        elseif name == "Pawn" then
+            items = {{"AutoSellPawn", "Auto Sell Pawn"}, {"PawnSellDelay", "Sell Delay (s)"}}
+        elseif name == "Plot" then
+            items = {{"AutoExpandPlot", "Expand Plot"}, {"ExpandDelay", "Expand Delay (s)"}, {"AutoBuild", "Auto Build"}}
+        elseif name == "Other" then
+            items = {{"AutoDaily", "Auto Daily"}, {"DailyDelay", "Daily Delay (s)"}, {"AutoUpgrade", "Auto Upgrade"}, {"UpgradeDelay", "Upgrade Delay (s)"}, {"AutoQuest", "Auto Quest"}, {"QuestDelay", "Quest Delay (s)"}, {"AutoFish", "Auto Fish"}, {"FishDelay", "Fish Delay (s)"}, {"AutoLuckyPotion", "Lucky Potion"}, {"PotionDelay", "Potion Delay (s)"}, {"AutoVehicleIncome", "Vehicle Income"}, {"VehicleDelay", "Vehicle Delay (s)"}}
         end
-    end)
-    return btn
-end
 
-local function makeInput(parent, name, key, placeholder, default)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1, -10, 0, 40)
-    f.BackgroundColor3 = Color3.fromRGB(30, 30, 46)
-    f.BackgroundTransparency = 0.2
-    f.BorderSizePixel = 0
-    f.Parent = parent
-    do
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, 8)
-        c.Parent = f
-    end
-    
-    local lb = Instance.new("TextLabel")
-    lb.Size = UDim2.new(0.4, 0, 1, 0)
-    lb.Position = UDim2.new(0, 10, 0, 0)
-    lb.BackgroundTransparency = 1
-    lb.Text = name
-    lb.TextColor3 = Color3.fromRGB(200, 200, 220)
-    lb.TextSize = 14
-    lb.Font = Enum.Font.Gotham
-    lb.TextXAlignment = Enum.TextXAlignment.Left
-    lb.Parent = f
-    
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0, 100, 0, 30)
-    box.Position = UDim2.new(1, -110, 0.5, -15)
-    box.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
-    box.BorderSizePixel = 0
-    box.Text = tostring(S[key] or default)
-    box.TextColor3 = Color3.fromRGB(220, 220, 255)
-    box.TextSize = 13
-    box.Font = Enum.Font.Gotham
-    box.PlaceholderText = placeholder or ""
-    box.Parent = f
-    do
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, 6)
-        c.Parent = box
-    end
-    
-    box.FocusLost:Connect(function()
-        local val = tonumber(box.Text)
-        if val then S[key] = val end
-    end)
-    return box
-end
+        local y = 0
+        for _, item in ipairs(items) do
+            local key = item[1]
+            local label = item[2]
+            if key:find("Delay") or key:find("Amount") then
+                local row = Instance.new("Frame")
+                row.Size = UDim2.new(1, 0, 0, 35)
+                row.Position = UDim2.new(0, 0, 0, y)
+                row.BackgroundTransparency = 1
+                row.Parent = scrollFrame
 
--- Build tabs
-local panelAuction = makeTab("Auction", 1)
-makeToggle(panelAuction, "Auto Bid", "AutoBid")
-makeToggle(panelAuction, "Auto Collect Coins", "AutoCollectCoins")
-makeInput(panelAuction, "Bid Amount ($)", "BidAmount", "Amount per bid", 100)
-makeInput(panelAuction, "Bid Delay (sec)", "BidDelay", "Delay between bids", 3)
+                local txt = Instance.new("TextLabel")
+                txt.Size = UDim2.new(0.6, 0, 1, 0)
+                txt.BackgroundTransparency = 1
+                txt.Text = label
+                txt.TextColor3 = Color3.fromRGB(200, 200, 200)
+                txt.Font = Enum.Font.Gotham
+                txt.TextSize = 14
+                txt.TextXAlignment = Enum.TextXAlignment.Left
+                txt.Parent = row
 
-local panelShop = makeTab("Shop", 2)
-makeToggle(panelShop, "Auto Stock Shelves", "AutoStock")
-makeToggle(panelShop, "Auto Collect Earnings", "AutoCollectEarnings")
-makeInput(panelShop, "Stock Delay (sec)", "StockDelay", "Delay between stocks", 5)
+                local box = Instance.new("TextBox")
+                box.Size = UDim2.new(0.35, 0, 0, 30)
+                box.Position = UDim2.new(0.65, 0, 0, 2.5)
+                box.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                box.TextColor3 = Color3.fromRGB(255, 255, 255)
+                box.Font = Enum.Font.Gotham
+                box.TextSize = 14
+                box.Text = tostring(S[key])
+                box.Parent = row
 
-local panelPawn = makeTab("Pawn", 3)
-makeToggle(panelPawn, "Auto Sell Pawn Items", "AutoSellPawn")
-makeInput(panelPawn, "Sell Delay (sec)", "PawnSellDelay", "Delay between sells", 5)
+                box.FocusLost:Connect(function(enter)
+                    if enter then
+                        local val = tonumber(box.Text)
+                        if val then S[key] = val end
+                        box.Text = tostring(S[key])
+                    end
+                end)
 
-local panelPlot = makeTab("Plot", 4)
-makeToggle(panelPlot, "Auto Expand Plot", "AutoExpandPlot")
-makeToggle(panelPlot, "Auto Build", "AutoBuild")
-makeInput(panelPlot, "Expand Delay (sec)", "ExpandDelay", "Delay between expands", 30)
-
-local panelOther = makeTab("Other", 5)
-makeToggle(panelOther, "Auto Daily Reward", "AutoDaily")
-makeInput(panelOther, "Daily Delay (sec)", "DailyDelay", "Delay between claims", 60)
-makeToggle(panelOther, "Auto Upgrades", "AutoUpgrade")
-makeInput(panelOther, "Upgrade Delay (sec)", "UpgradeDelay", "Delay between upgrades", 10)
-makeToggle(panelOther, "Auto Quests", "AutoQuest")
-makeInput(panelOther, "Quest Delay (sec)", "QuestDelay", "Delay between quests", 15)
-makeToggle(panelOther, "Auto Fish", "AutoFish")
-makeInput(panelOther, "Fish Delay (sec)", "FishDelay", "Delay between casts", 8)
-makeToggle(panelOther, "Auto Lucky Potion", "AutoLuckyPotion")
-makeInput(panelOther, "Potion Delay (sec)", "PotionDelay", "Delay between potions", 300)
-makeToggle(panelOther, "Auto Vehicle Income", "AutoVehicleIncome")
-makeInput(panelOther, "Vehicle Delay (sec)", "VehicleDelay", "Delay between collections", 60)
-
--- Note
-local note = Instance.new("TextLabel")
-note.Size = UDim2.new(1, -20, 0, 24)
-note.Position = UDim2.new(0, 10, 0, 376)
-note.BackgroundTransparency = 1
-note.Text = "RightShift — toggle GUI | Events scanned automatically"
-note.TextColor3 = Color3.fromRGB(140, 140, 160)
-note.TextSize = 11
-note.Font = Enum.Font.Gotham
-note.TextWrapped = true
-note.Parent = main
-
--- Update canvas sizes
-local function updateCanvas()
-    for _, panel in ipairs(tabPanels) do
-        local layout = panel:FindFirstChildOfClass("UIListLayout")
-        if layout then
-            panel.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
-        end
-    end
-end
-task.spawn(function() task.wait(0.1) updateCanvas() end)
-
--- Scan remotes
-scan()
-print("[Farm] GUI ready. Press RightShift to toggle.")
-
--- Module coroutines
-local function runModule(name, enabledKey, fn)
-    if coroutines[name] then
-        coroutines[name]:Cancel()
-        coroutines[name] = nil
-    end
-    if S[enabledKey] then
-        coroutines[name] = task.spawn(fn)
-    end
-end
-
-local function startStopModules()
-    runModule("auctionBid", "AutoBid", function()
-        while S.AutoBid do
-            task.wait(S.BidDelay)
-            if has("Bid") then
-                fire("Bid", S.BidAmount)
+                y = y + 38
             else
-                local ev = RC["Auctions.Bid"] or RC["Auction.Bid"]
-                if ev then fire(ev, S.BidAmount) end
-            end
-        end
-    end)
-    
-    runModule("auctionCoins", "AutoCollectCoins", function()
-        while S.AutoCollectCoins do
-            task.wait(10)
-            fire("CollectEarnings") or fire("Auction.CollectEarnings") or fire("Auctions.CollectEarnings")
-        end
-    end)
-    
-    runModule("stock", "AutoStock", function()
-        while S.AutoStock do
-            task.wait(S.StockDelay)
-            fire("Stock") or fire("Shop.Stock")
-        end
-    end)
-    
-    runModule("shopEarnings", "AutoCollectEarnings", function()
-        while S.AutoCollectEarnings do
-            task.wait(10)
-            fire("CollectEarnings") or fire("Shop.CollectEarnings")
-        end
-    end)
-    
-    runModule("pawnSell", "AutoSellPawn", function()
-        while S.AutoSellPawn do
-            task.wait(S.PawnSellDelay)
-            if has("SellItem") then
-                fire("SellItem")
-            else
-                fire("PawnShop.SellItem")
-            end
-        end
-    end)
-    
-    runModule("daily", "AutoDaily", function()
-        while S.AutoDaily do
-            task.wait(S.DailyDelay)
-            fire("ClaimReward") or fire("DailyReward.ClaimReward")
-        end
-    end)
-    
-    runModule("upgrade", "AutoUpgrade", function()
-        while S.AutoUpgrade do
-            task.wait(S.UpgradeDelay)
-            fire("BuyUpgrade") or fire("Upgrades.BuyUpgrade")
-        end
-    end)
-    
-    runModule("quest", "AutoQuest", function()
-        while S.AutoQuest do
-            task.wait(S.QuestDelay)
-            fire("ClaimQuest") or fire("Quests.ClaimQuest")
-        end
-    end)
-    
-    runModule("expand", "AutoExpandPlot", function()
-        while S.AutoExpandPlot do
-            task.wait(S.ExpandDelay)
-            fire("Expand") or fire("Plot.Expand")
-        end
-    end)
-    
-    runModule("build", "AutoBuild", function()
-        while S.AutoBuild do
-            task.wait(5)
-            local walls = {"PlaceWall", "PlaceFloor", "PlaceRoof", "PlaceWindow", "PlaceDoor"}
-            for _, cmd in ipairs(walls) do
-                if not S.AutoBuild then break end
-                fire(cmd) or fire("Plot." .. cmd)
-                task.wait(1)
-            end
-        end
-    end)
-    
-    runModule("fish", "AutoFish", function()
-        while S.AutoFish do
-            task.wait(S.FishDelay)
-            fire("Fish") or fire("Fishing.Fish")
-        end
-    end)
-    
-    runModule("potion", "AutoLuckyPotion", function()
-        while S.AutoLuckyPotion do
-            task.wait(S.PotionDelay)
-            fire("UsePotion") or fire("Misc.UsePotion")
-        end
-    end)
-    
-    runModule("vehicle", "AutoVehicleIncome", function()
-        while S.AutoVehicleIncome do
-            task.wait(S.VehicleDelay)
-            fire("SpawnVehicle") or fire("Vehicles.SpawnVehicle")
-        end
-    end)
-end
+                local row = Instance.new("Frame")
+                row.Size = UDim2.new(1, 0, 0, 35)
+                row.Position = UDim2.new(0, 0, 0, y)
+                row.BackgroundTransparency = 1
+                row.Parent = scrollFrame
 
--- Watch settings changes (re-scan every toggle)
-local oldS = {}
-for k, v in pairs(S) do oldS[k] = v end
+                local txt = Instance.new("TextLabel")
+                txt.Size = UDim2.new(0.6, 0, 1, 0)
+                txt.BackgroundTransparency = 1
+                txt.Text = label
+                txt.TextColor3 = Color3.fromRGB(200, 200, 200)
+                txt.Font = Enum.Font.Gotham
+                txt.TextSize = 14
+                txt.TextXAlignment = Enum.TextXAlignment.Left
+                txt.Parent = row
 
-task.spawn(function()
-    while task.wait(0.5) do
+                local btn = Instance.new("TextButton")
+                btn.Size = UDim2.new(0.35, 0, 0, 30)
+                btn.Position = UDim2.new(0.65, 0, 0, 2.5)
+                btn.Font = Enum.Font.Gotham
+                btn.TextSize = 14
+                btn.Text = S[key] and "ON" or "OFF"
+                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                local function updateBtn()
+                    btn.Text = S[key] and "ON" or "OFF"
+                    btn.BackgroundColor3 = S[key] and Color3.fromRGB(40, 200, 40) or Color3.fromRGB(80, 80, 80)
+                end
+                updateBtn()
+                btn.MouseButton1Click:Connect(function()
+                    S[key] = not S[key]
+                    updateBtn()
+                end)
+                btn.Parent = row
+
+                y = y + 38
+            end
+        end
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, y + 10)
+    end
+
+    for i, tab in ipairs(tabs) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0.2, 0, 1, 0)
+        btn.Position = UDim2.new(0.2 * (i - 1), 0, 0, 0)
+        btn.BackgroundTransparency = 1
+        btn.Text = tab
+        btn.TextColor3 = Color3.fromRGB(180, 180, 180)
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 13
+        btn.Parent = tabFrame
+        tabButtons[tab] = btn
+        btn.MouseButton1Click:Connect(function()
+            for _, b in pairs(tabButtons) do b.TextColor3 = Color3.fromRGB(180, 180, 180) end
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            switchTab(tab)
+        end)
+    end
+    switchTab("Auction")
+    tabButtons["Auction"].TextColor3 = Color3.fromRGB(255, 255, 255)
+
+    -- Modules
+    local function startStopModules()
+        for k, co in pairs(coroutines) do
+            task.cancel(co)
+            coroutines[k] = nil
+        end
         for k, v in pairs(S) do
-            if oldS[k] ~= v then
-                oldS[k] = v
-                startStopModules()
-                break
-            end
-        end
-    end
-end)
-
--- Initial start
-task.wait(1)
-startStopModules()
-
--- Keybind
-UIS.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then
-        guiEnabled = not guiEnabled
-        gui.Enabled = guiEnabled
-    end
-end)
-
-print("[Farm] AutoFarm v2 loaded successfully")
+            if type(v) == "boolean" and v then
+                if k == "AutoBid" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(S.BidDelay)
+                            fire("Bid") or fire("Auction.Bid")
+                            for i = 1, 5 do fire("IncreaseBid") or fire("Auction.IncreaseBid") end
+                        end
+                    end)
+                elseif k == "AutoCollectCoins" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(5)
+                            fire("CollectCoins") or fire("Auction.CollectCoins")
+                        end
+                    end)
+                elseif k == "AutoBuyout" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(S.BidDelay + 1)
+                            fire("Buyout") or fire("Auction.Buyout")
+                        end
+                    end)
+                elseif k == "AutoStock" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(S.StockDelay)
+                            fire("Stock") or fire("Shop.Stock")
+                        end
+                    end)
+                elseif k == "AutoCollectEarnings" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(5)
+                            fire("CollectEarnings") or fire("Shop.CollectEarnings")
+                        end
+                    end)
+                elseif k == "AutoSellPawn" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(S.PawnSellDelay)
+                            fire("SellPawn") or fire("Pawn.SellPawn")
+                        end
+                    end)
+                elseif k == "AutoDaily" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(S.DailyDelay)
+                            fire("ClaimDaily") or fire("DailyReward.Claim")
+                        end
+                    end)
+                elseif k == "AutoUpgrade" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(S.UpgradeDelay)
+                            fire("Upgrade") or fire("Upgrades.Upgrade")
+                        end
+                    end)
+                elseif k == "AutoQuest" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(S.QuestDelay)
+                            fire("ClaimQuest") or fire("Quest.ClaimReward")
+                            fire("StartQuest") or fire("Quest.StartQuest")
+                        end
+                    end)
+                elseif k == "AutoExpandPlot" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(S.ExpandDelay)
+                            fire("ExpandPlot") or fire("Plot.Expand")
+                        end
+                    end)
+                elseif k == "AutoBuild" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(5)
+                            fire("Build") or fire("Plot.Build")
+                            fire("PlaceWall") or fire("Plot.PlaceWall")
+                        end
+                    end)
+                elseif k == "AutoFish" then
+                    coroutines[k] = task.spawn(function()
+                        while S[k] do
+                            task.wait(S.FishDelay)
+                            fire("CastRod") or fire("Fishing.CastRod")
+                            fire("ReelIn") or fire("
